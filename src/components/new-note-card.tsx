@@ -7,8 +7,11 @@ interface NewNoteCardProps {
   onNoteCreated: (content: string) => void
 }
 
+let speechRecognition: SpeechRecognition | null = null
+
 export function NewNoteCard({ onNoteCreated }: NewNoteCardProps) {
   const [shouldShowOnboarding, setShouldShowOnboarding] = useState(true)
+  const [isRecording, setIsRecording] = useState(false)
   const [content, setContent] = useState('')
 
   function handleStartEditor() {
@@ -26,12 +29,67 @@ export function NewNoteCard({ onNoteCreated }: NewNoteCardProps) {
   function handleSaveNote(event: FormEvent) {
     event.preventDefault()
 
+    if (content === '') {
+      return
+    }
+
     onNoteCreated(content)
 
     setContent('')
     setShouldShowOnboarding(true)
 
     toast.success('Nota criada com sucesso!')
+  }
+
+  function handleStartRecording() {
+    const isSpeechRecognitionAPIAvailable = 'SpeechRecognition' in window 
+      || 'webkitSpeechRecognition' in window
+
+    if (!isSpeechRecognitionAPIAvailable) {
+      alert('Infelizmente seu navegador não suporta a API de gravação!')
+      return
+    }
+
+    setIsRecording(true)
+    setShouldShowOnboarding(false)
+
+    const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition
+  
+    speechRecognition = new SpeechRecognitionAPI()
+
+    speechRecognition.lang = 'pt-BR'
+    speechRecognition.continuous = true // não para de gravar até indicar manualmente para parar de gravar
+    // caso coloque o continuous como falso ou não coloque ele, ao parar de falar, ele encerra a gravação
+    speechRecognition.maxAlternatives = 1 // trazer somente uma alternativa mais provável das palavras que acha que falou
+    speechRecognition.interimResults = true // a API vai trazendo os resultados conforme vai falando, e não só quando parar de falar
+  
+    speechRecognition.onresult = (event) => { // função chamada toda vez que a API ouvir algo
+      // A API traz todas as palavras reconhecidas desde o início da gravação, e não apenas a última palavra reconhecida
+      const transcription = Array.from(event.results).reduce((text, result) => {
+        return text.concat(result[0].transcript)
+      }, '')
+      // Array.from converte qualquer tipo de iterator (listagem que pode ser percorrida no JS) para um array
+      // O reduce, para cada informação do array, executa uma função, e o segundo parâmetro é o valor inicial da informação que quer montar, nesse caso uma string com todo o texto falado pelo usuário
+      // A função do reduce vai receber dois parâmetros, o primeiro é o texto que está criando e o segundo é cada item do resultado
+      // Retorna uma string, que é a concatenação do texto até ter o texto completo
+      // result[0] porque é a primeira posição no array, já que cada resultado vai ter no máximo uma alternativa
+    
+      setContent(transcription)
+    }
+
+    speechRecognition.onerror = (event) => {
+      console.error(event)
+    }
+
+    speechRecognition.start()
+  }
+
+  function handleStopRecording() {
+    setIsRecording(false)
+
+    if (speechRecognition !== null) {
+      speechRecognition.stop()
+    }
   }
 
   return (
@@ -52,7 +110,7 @@ export function NewNoteCard({ onNoteCreated }: NewNoteCardProps) {
               <X className="size-5" />
             </Dialog.Close>
 
-            <form onSubmit={handleSaveNote} className="flex-1 flex flex-col">
+            <form className="flex-1 flex flex-col">
               <div className="flex flex-1 flex-col gap-3 p-5">
                 <span className="text-sm font-medium text-slate-300">
                   Adicionar nota
@@ -60,7 +118,7 @@ export function NewNoteCard({ onNoteCreated }: NewNoteCardProps) {
 
                 {shouldShowOnboarding ? (
                   <p className="text-sm leading-6 text-slate-400">
-                    Comece <button className="font-medium text-lime-400 hover:underline">gravando uma nota</button> em áudio ou se preferir <button onClick={handleStartEditor} className="font-medium text-lime-400 hover:underline">utilize apenas texto</button>.
+                    Comece <button type="button" onClick={handleStartRecording} className="font-medium text-lime-400 hover:underline">gravando uma nota</button> em áudio ou se preferir <button type="button" onClick={handleStartEditor} className="font-medium text-lime-400 hover:underline">utilize apenas texto</button>.
                   </p>
                 ) : (
                   <textarea
@@ -72,12 +130,24 @@ export function NewNoteCard({ onNoteCreated }: NewNoteCardProps) {
                 )}
               </div>
 
-              <button
-                type="submit"
-                className="w-full bg-lime-400 py-4 text-center text-sm text-lime-950 outline-none font-medium hover:bg-lime-500"
-              >
-                Salvar nota
-              </button>
+              {isRecording ? (
+                <button
+                  type="button"
+                  onClick={handleStopRecording}
+                  className="w-full flex items-center justify-center gap-2 bg-slate-900 py-4 text-center text-sm text-slate-300 outline-none font-medium hover:text-slate-100"
+                >
+                  <div className="size-3 rounded-full bg-red-500 animate-pulse" />
+                  Gravando! (clique para interromper)
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSaveNote}
+                  className="w-full bg-lime-400 py-4 text-center text-sm text-lime-950 outline-none font-medium hover:bg-lime-500"
+                >
+                  Salvar nota
+                </button>
+              )}
             </form>
           </Dialog.Content>
         </Dialog.Overlay>
